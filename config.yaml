@@ -1,0 +1,21 @@
+server:
+  addr: ":8088"
+  shutdown_timeout_seconds: 10
+  max_concurrent_requests: 100 # 0 disables the limit
+  api_key: tsc_Op0u8EE8ZSNrW8-35xiY69LUTIYmuJdzIXm_GlN-vos # empty disables authentication
+
+database:
+  dsn: ./data/db.versions
+  repository: ghcr.io/aquasecurity/trivy-db:2
+  update_interval: 6h
+
+log:
+  console_level: info
+  console_format: json # text, json, off, or a slogs TLCM mask such as TLCM
+  file_level: info
+  file_path: ./data/app.log # empty disables file output
+  log_file_format: json
+  max_size: 100
+  max_backups: 5
+  max_age: 30
+  compress: true
