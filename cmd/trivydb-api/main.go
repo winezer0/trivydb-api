@@ -18,9 +18,9 @@ import (
 )
 
 type CLI struct {
-	Config string   `short:"c" default:"config.yaml" help:"Configuration file."`
-	Serve  struct{} `cmd:"" default:"1" help:"Start the HTTP API service."`
-	Update struct{} `cmd:"" help:"Download and activate the Trivy database, then exit."`
+	Config   string   `short:"c" default:"config.yaml" help:"Configuration file."`
+	Serve    struct{} `cmd:"" help:"Start the HTTP API service."`
+	UpdateDB struct{} `cmd:"" help:"Download and activate the Trivy database, then exit."`
 }
 
 func main() {
@@ -36,7 +36,7 @@ func run() error {
 	switch ctx.Command() {
 	case "serve":
 		return serve(cli.Config)
-	case "update":
+	case "update-db":
 		return update(cli.Config)
 	default:
 		return fmt.Errorf("unknown command %q", ctx.Command())

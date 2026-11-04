@@ -22,7 +22,7 @@
 先在 [`config.yaml`](config.yaml) 中将 `server.api_key` 改为自己的密钥。然后在项目根目录启动服务：
 
 ```sh
-go run ./cmd/trivydb-api
+go run ./cmd/trivydb-api serve
 ```
 
 服务默认监听 `http://localhost:8088`。首次启动会在本地数据库不可用时自动下载数据库，因此需要能够访问配置的 OCI 仓库。启动后可用以下命令查询漏洞：
@@ -45,7 +45,7 @@ go build -o trivydb-api ./cmd/trivydb-api
 启动服务（默认读取当前目录下的 `config.yaml`）：
 
 ```sh
-go run ./cmd/trivydb-api
+go run ./cmd/trivydb-api serve
 ```
 
 也可以指定配置文件：
@@ -61,10 +61,10 @@ go run ./cmd/trivydb-api serve -c ./config.yaml
 服务停止时，可执行一次下载、校验并激活数据库，然后退出：
 
 ```sh
-go run ./cmd/trivydb-api update -c ./config.yaml
+go run ./cmd/trivydb-api update-db -c ./config.yaml
 ```
 
-`update` 与服务内更新使用相同的暂存、校验和版本切换流程。新版本成功打开并激活后会清理旧版本；若更新失败，当前数据库仍会保留并恢复使用。命令行参数由 [Kong](https://github.com/alecthomas/kong) 解析。
+`update-db` 与服务内更新使用相同的暂存、校验和版本切换流程。新版本成功打开并激活后会清理旧版本；若更新失败，当前数据库仍会保留并恢复使用。必须显式指定 `serve` 或 `update-db` 子命令，命令行参数由 [Kong](https://github.com/alecthomas/kong) 解析。
 
 ### 配置
 

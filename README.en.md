@@ -22,7 +22,7 @@ An independent HTTP query service and updater for the Trivy vulnerability databa
 Set `server.api_key` in [`config.yaml`](config.yaml) to your own secret, then start the service from the project root:
 
 ```sh
-go run ./cmd/trivydb-api
+go run ./cmd/trivydb-api serve
 ```
 
 The service listens on `http://localhost:8088` by default. If no usable local database is available, it downloads one on startup, so the configured OCI repository must be reachable. Query a vulnerability with:
@@ -45,7 +45,7 @@ go build -o trivydb-api ./cmd/trivydb-api
 Start the service (it reads `config.yaml` from the current directory by default):
 
 ```sh
-go run ./cmd/trivydb-api
+go run ./cmd/trivydb-api serve
 ```
 
 To specify a configuration file:
@@ -61,10 +61,10 @@ The service listens on `:8088` by default. If no usable local database is availa
 When the service is stopped, download, validate, and activate the database once, then exit:
 
 ```sh
-go run ./cmd/trivydb-api update -c ./config.yaml
+go run ./cmd/trivydb-api update-db -c ./config.yaml
 ```
 
-The `update` command uses the same staging, validation, and version switching flow as service updates. After the new version opens and is activated, old versions are removed; if an update fails, the existing database remains available. Command-line parsing uses [Kong](https://github.com/alecthomas/kong).
+The `update-db` command uses the same staging, validation, and version switching flow as service updates. After the new version opens and is activated, old versions are removed; if an update fails, the existing database remains available. Specify either `serve` or `update-db` explicitly. Command-line parsing uses [Kong](https://github.com/alecthomas/kong).
 
 ### Configuration
 
