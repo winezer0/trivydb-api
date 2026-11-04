@@ -1,0 +1,113 @@
+name: Release Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version (e.g., v1.0.0)
+        required: true
+        type: string
+        default: v0.0.1
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.asset }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      GOWORK: 'off'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            asset: trivydb-api-windows-amd64.zip
+          - os: ubuntu-latest
+            asset: trivydb-api-linux-amd64.tar.gz
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+          cache: true
+
+      - run: go mod download
+      - run: go mod verify
+      - run: go test -mod=readonly ./...
+
+      - name: Build Windows release
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          GOOS: windows
+          GOARCH: amd64
+        run: |
+          New-Item -ItemType Directory -Force -Path bin, dist | Out-Null
+          go build -mod=readonly -trimpath -ldflags "-s -w" -o bin/trivydb-api.exe ./cmd/trivydb-api
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $asset = 'trivydb-api-windows-amd64.zip'
+          Compress-Archive -Path bin/trivydb-api.exe -DestinationPath "dist/$asset" -Force
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $checksum = (Get-FileHash "dist/$asset" -Algorithm SHA256).Hash.ToLowerInvariant()
+          [System.IO.File]::WriteAllText("dist/$asset.sha256", "$checksum  $asset`n", [System.Text.Encoding]::ASCII)
+
+      - name: Build Linux release
+        if: runner.os == 'Linux'
+        env:
+          GOOS: linux
+          GOARCH: amd64
+        run: |
+          set -euo pipefail
+          mkdir -p bin dist
+          go build -mod=readonly -trimpath -ldflags "-s -w" -o bin/trivydb-api ./cmd/trivydb-api
+          tar -czf dist/trivydb-api-linux-amd64.tar.gz -C bin trivydb-api
+          (cd dist && sha256sum trivydb-api-linux-amd64.tar.gz > trivydb-api-linux-amd64.tar.gz.sha256)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: |
+            dist/${{ matrix.asset }}
+            dist/${{ matrix.asset }}.sha256
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create release if needed and upload builds
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.version }}
+        shell: bash
+        run: |
+          if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            release_args=()
+            if [[ "$RELEASE_TAG" == *-* ]]; then
+              release_args+=(--prerelease)
+            fi
+            gh release create "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "$RELEASE_TAG" \
+              --notes "" \
+              "${release_args[@]}"
+          fi
+
+          gh release upload "$RELEASE_TAG" release-assets/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
