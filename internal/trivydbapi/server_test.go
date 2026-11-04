@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	trivydb "github.com/aquasecurity/trivy-db/pkg/db"
@@ -103,6 +104,33 @@ func TestPruneOldVersionsKeepsOnlyActive(t *testing.T) {
 	}
 	if len(got) != 1 || got[0] != "20261103" {
 		t.Fatalf("retained versions = %v, want only the active version", got)
+	}
+}
+
+func TestDatabaseUpdateTransportUsesConfiguredProxy(t *testing.T) {
+	for _, proxy := range []string{
+		"http://127.0.0.1:7890",
+		"https://proxy.example:8443",
+		"socks5://127.0.0.1:1080",
+		"socks5h://127.0.0.1:1080",
+	} {
+		t.Run(proxy, func(t *testing.T) {
+			transport, err := databaseUpdateTransport(proxy)
+			if err != nil {
+				t.Fatalf("create transport: %v", err)
+			}
+			httpTransport, ok := transport.(*http.Transport)
+			if !ok {
+				t.Fatalf("transport type = %T, want *http.Transport", transport)
+			}
+			proxyURL, err := httpTransport.Proxy(httptest.NewRequest(http.MethodGet, "https://ghcr.io/v2/", nil))
+			if err != nil {
+				t.Fatalf("resolve proxy: %v", err)
+			}
+			if proxyURL == nil || !strings.HasPrefix(proxyURL.String(), proxy) {
+				t.Fatalf("proxy URL = %v, want prefix %q", proxyURL, proxy)
+			}
+		})
 	}
 }
 

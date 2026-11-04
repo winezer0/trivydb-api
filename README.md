@@ -79,7 +79,10 @@ go run ./cmd/trivydb-api update -c ./config.yaml
 | `database.dsn` | `./data/db.versions` | 数据库根目录；各数据库版本存放在其 `versions` 子目录中。 |
 | `database.repository` | `ghcr.io/aquasecurity/trivy-db:2` | Trivy DB OCI 镜像引用。 |
 | `database.update_interval` | `6h` | 定时更新间隔；设为 `0` 可关闭定时更新。 |
+| `database.update_proxy` | 空 | 可选的数据库下载代理，仅用于下载 Trivy DB。支持 `http://`、`https://`、`socks5://` 和 `socks5h://`；留空时使用 Go 标准代理环境变量。 |
 | `log.*` | 见配置文件 | 控制台和文件日志等级、格式、轮转与保留策略；`file_path: ""` 可关闭文件日志。 |
+
+例如，可将 `database.update_proxy` 设为 `http://127.0.0.1:7890` 或 `socks5h://127.0.0.1:1080`。代理认证信息可写在 URL 中，例如 `http://user:password@proxy.example:8080`。代理只影响数据库下载，不影响查询 API 请求。
 
 日志格式支持 `text`、`json`、`off`，也支持 `TLCM` 等 `slogs` 格式掩码。
 
@@ -120,6 +123,22 @@ GET /api/v1/query?id=CVE-2025-1234&package=lodash&version=4.17.20
 ```
 最后一个示例将漏洞 ID、软件包和版本组合使用，以筛选该软件包版本相关的匹配项。
 也可以使用 `cve` 参数代替 `id`。查询至少需要漏洞 ID、软件包名称或 PURL 其中之一。PURL 会限定软件包生态系统；指定版本时，只返回影响该版本的公告。仅使用软件包名称时，会在各生态系统中进行精确名称匹配。
+
+#### 当前数据库下的查询耗时
+
+以下是在本机 Windows 服务上对当前 Trivy DB 的单次测量（数据库版本 `20261103T093641.961787100`，`trivy.db` 约 2 GiB）。请求通过本机 HTTP 发出，未携带 API Key：
+
+| 查询方式 | 测试参数 | 响应耗时 |
+| --- | --- | ---: |
+| 仅 `id` | `id=CVE-2021-23337` | 10.89 秒 |
+| 仅 `cve` | `cve=CVE-2021-23337` | 15.66 秒 |
+| 仅 `package` | `package=lodash` | 4.78 毫秒 |
+| 软件包 + 版本 | `package=lodash&version=4.17.20` | 3.07 毫秒 |
+| PURL | `purl=pkg:npm/lodash@4.17.20` | 2.38 毫秒 |
+| ID + 软件包 + 版本 | `id=CVE-2021-23337&package=lodash&version=4.17.20` | 2.69 毫秒 |
+| 仅 `version` | `version=4.17.20` | 不支持，返回 HTTP 400 |
+
+每种方式均为一次观测，未清理操作系统文件缓存；表格按顺序测试，前面的 ID 全库扫描可能预热后续查询使用的缓存，因此软件包/PURL耗时是热缓存参考，不代表冷缓存速度。实际耗时会随磁盘、缓存和系统负载变化。裸 `id`/`cve` 查询会扫描公告来匹配别名，因此在大数据库上明显更慢；给 ID 查询增加 `package`（最好也加 `version`）或使用 PURL，可走软件包索引路径。
 
 #### 批量查询
 

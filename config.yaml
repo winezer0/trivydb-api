@@ -8,6 +8,7 @@ database:
   dsn: ./data/db.versions
   repository: ghcr.io/aquasecurity/trivy-db:2
   update_interval: 6h
+  update_proxy: "" # optional: http://, https://, socks5://, or socks5h:// proxy URL
 
 log:
   console_level: info

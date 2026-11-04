@@ -115,6 +115,7 @@ func serverOptions(cfg config.Config, updateInterval time.Duration) trivydbapi.O
 	return trivydbapi.Options{
 		DBDir: cfg.Database.DSN, APIKey: cfg.Server.APIKey,
 		DBRepository: cfg.Database.Repository, UpdateInterval: updateInterval,
+		UpdateProxy:           cfg.Database.UpdateProxy,
 		MaxConcurrentRequests: cfg.Server.MaxConcurrentRequests,
 	}
 }

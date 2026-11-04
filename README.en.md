@@ -79,7 +79,10 @@ The repository includes a [`config.yaml`](config.yaml) example. Set `server.api_
 | `database.dsn` | `./data/db.versions` | Database root directory; versions are stored in its `versions` subdirectory. |
 | `database.repository` | `ghcr.io/aquasecurity/trivy-db:2` | Trivy DB OCI image reference. |
 | `database.update_interval` | `6h` | Scheduled update interval; `0` disables scheduled updates. |
+| `database.update_proxy` | empty | Optional proxy used only for Trivy DB downloads. Supports `http://`, `https://`, `socks5://`, and `socks5h://` URLs. When empty, Go's standard proxy environment variables are used. |
 | `log.*` | See config file | Console and file log levels, formats, rotation, and retention; set `file_path: ""` to disable file logging. |
+
+For example, set `database.update_proxy` to `http://127.0.0.1:7890` or `socks5h://127.0.0.1:1080`. Proxy credentials can be included in the URL, such as `http://user:password@proxy.example:8080`. The proxy affects database downloads only; query API traffic is unchanged.
 
 Log formats include `text`, `json`, `off`, and `slogs` masks such as `TLCM`.
 
@@ -119,6 +122,22 @@ GET /api/v1/query?purl=pkg:npm/lodash@4.17.20
 GET /api/v1/query?id=CVE-2025-1234&package=lodash&version=4.17.20
 ```
 The last example combines a vulnerability ID, package, and version to filter matching advisories for that package version.
+
+#### Query latency on the current database
+
+These are single-request measurements against the current Trivy DB from the local Windows service (database version `20261103T093641.961787100`, `trivy.db` about 2 GiB). Requests were sent over loopback without an API key:
+
+| Query type | Test parameters | Response time |
+| --- | --- | ---: |
+| `id` only | `id=CVE-2021-23337` | 10.89 s |
+| `cve` only | `cve=CVE-2021-23337` | 15.66 s |
+| `package` only | `package=lodash` | 4.78 ms |
+| Package + version | `package=lodash&version=4.17.20` | 3.07 ms |
+| PURL | `purl=pkg:npm/lodash@4.17.20` | 2.38 ms |
+| ID + package + version | `id=CVE-2021-23337&package=lodash&version=4.17.20` | 2.69 ms |
+| `version` only | `version=4.17.20` | Unsupported; returns HTTP 400 |
+
+Each value is a single observation; the operating system file cache was not cleared. Since requests were tested in table order, the preceding full ID scan may have warmed the cache for later package/PURL queries. Those timings are warm-cache references, not cold-cache measurements, and vary with storage, cache state, and system load. A bare `id`/`cve` query scans advisories to match aliases, which is substantially slower on a large database. Add `package` (and preferably `version`) to an ID query, or use a PURL, to take the package-index path.
 
 #### Batch query
 

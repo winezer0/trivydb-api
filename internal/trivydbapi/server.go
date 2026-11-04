@@ -11,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -44,6 +45,7 @@ type Options struct {
 	APIKey                string
 	DBRepository          string
 	UpdateInterval        time.Duration
+	UpdateProxy           string
 	MaxConcurrentRequests int
 }
 
@@ -64,7 +66,9 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 	if opts.DBRepository == "" {
 		opts.DBRepository = defaultDBRepository
 	}
-	server := &Server{opts: opts, activeDBDir: opts.DBDir, download: downloadDatabase}
+	server := &Server{opts: opts, activeDBDir: opts.DBDir, download: func(ctx context.Context, repository, destination string) error {
+		return downloadDatabase(ctx, repository, destination, opts.UpdateProxy)
+	}}
 	if activeDir, err := resolveActiveDBDir(opts.DBDir); err != nil {
 		return nil, fmt.Errorf("resolve active Trivy DB directory: %w", err)
 	} else if activeDir != "" {
@@ -92,7 +96,9 @@ func UpdateDatabase(ctx context.Context, opts Options) error {
 	if opts.DBRepository == "" {
 		opts.DBRepository = defaultDBRepository
 	}
-	server := &Server{opts: opts, activeDBDir: opts.DBDir, download: downloadDatabase}
+	server := &Server{opts: opts, activeDBDir: opts.DBDir, download: func(ctx context.Context, repository, destination string) error {
+		return downloadDatabase(ctx, repository, destination, opts.UpdateProxy)
+	}}
 	activeDir, err := resolveActiveDBDir(opts.DBDir)
 	if err != nil {
 		return fmt.Errorf("resolve active Trivy DB directory: %w", err)
@@ -362,12 +368,16 @@ func writeActiveVersion(dbDir, version string) error {
 	return replaceFile(temporary.Name(), filepath.Join(root, activeVersionFile))
 }
 
-func downloadDatabase(ctx context.Context, repository, destination string) error {
+func downloadDatabase(ctx context.Context, repository, destination, proxy string) error {
 	reference, err := name.ParseReference(repository)
 	if err != nil {
 		return fmt.Errorf("parse Trivy DB repository: %w", err)
 	}
-	descriptor, err := remote.Get(reference, remote.WithContext(ctx), remote.WithAuthFromKeychain(authn.DefaultKeychain))
+	transport, err := databaseUpdateTransport(proxy)
+	if err != nil {
+		return err
+	}
+	descriptor, err := remote.Get(reference, remote.WithContext(ctx), remote.WithAuthFromKeychain(authn.DefaultKeychain), remote.WithTransport(transport))
 	if err != nil {
 		return fmt.Errorf("download Trivy DB artifact: %w", err)
 	}
@@ -398,6 +408,33 @@ func downloadDatabase(ctx context.Context, repository, destination string) error
 		return nil
 	}
 	return fmt.Errorf("Trivy DB artifact does not contain layer %q", dbLayerMediaType)
+}
+
+func databaseUpdateTransport(proxy string) (http.RoundTripper, error) {
+	base, ok := remote.DefaultTransport.(*http.Transport)
+	if !ok {
+		return nil, errors.New("create database update transport: unexpected default transport type")
+	}
+	transport := base.Clone()
+	proxy = strings.TrimSpace(proxy)
+	if proxy == "" {
+		return transport, nil
+	}
+	proxyURL, err := url.Parse(proxy)
+	if err != nil || proxyURL == nil || proxyURL.Host == "" || proxyURL.Opaque != "" {
+		return nil, errors.New("database.update_proxy must be an absolute proxy URL")
+	}
+	proxyURL.Scheme = strings.ToLower(proxyURL.Scheme)
+	switch proxyURL.Scheme {
+	case "http", "https", "socks5", "socks5h":
+	default:
+		return nil, errors.New("database.update_proxy scheme must be http, https, socks5, or socks5h")
+	}
+	if (proxyURL.Path != "" && proxyURL.Path != "/") || proxyURL.RawQuery != "" || proxyURL.Fragment != "" {
+		return nil, errors.New("database.update_proxy must not contain a path, query, or fragment")
+	}
+	transport.Proxy = http.ProxyURL(proxyURL)
+	return transport, nil
 }
 
 func extractDatabaseLayer(source io.Reader, destination string) error {

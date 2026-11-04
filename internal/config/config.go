@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -52,6 +53,7 @@ type DatabaseConfig struct {
 	DSN            string `yaml:"dsn"`
 	Repository     string `yaml:"repository"`
 	UpdateInterval string `yaml:"update_interval"`
+	UpdateProxy    string `yaml:"update_proxy"`
 }
 
 func Load(file string) (Config, error) {
@@ -121,6 +123,21 @@ func (c Config) Validate() error {
 	}
 	if interval < 0 {
 		return errors.New("database.update_interval cannot be negative")
+	}
+	proxy := strings.TrimSpace(c.Database.UpdateProxy)
+	if proxy != "" {
+		proxyURL, err := url.Parse(proxy)
+		if err != nil || proxyURL == nil || proxyURL.Host == "" || proxyURL.Opaque != "" {
+			return errors.New("database.update_proxy must be an absolute proxy URL")
+		}
+		switch strings.ToLower(proxyURL.Scheme) {
+		case "http", "https", "socks5", "socks5h":
+		default:
+			return errors.New("database.update_proxy scheme must be http, https, socks5, or socks5h")
+		}
+		if (proxyURL.Path != "" && proxyURL.Path != "/") || proxyURL.RawQuery != "" || proxyURL.Fragment != "" {
+			return errors.New("database.update_proxy must not contain a path, query, or fragment")
+		}
 	}
 	return nil
 }

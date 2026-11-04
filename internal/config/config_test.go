@@ -50,3 +50,30 @@ func TestLoadEmptyFilePathDisablesLogFile(t *testing.T) {
 		t.Fatalf("log file path = %q, want disabled", got)
 	}
 }
+
+func TestValidateDatabaseUpdateProxySchemes(t *testing.T) {
+	for _, proxy := range []string{
+		"http://127.0.0.1:7890",
+		"https://proxy.example:8443",
+		"socks5://127.0.0.1:1080",
+		"socks5h://127.0.0.1:1080",
+	} {
+		t.Run(proxy, func(t *testing.T) {
+			cfg := Config{Database: DatabaseConfig{DSN: "db", UpdateInterval: "6h", UpdateProxy: proxy}}
+			if err := cfg.Validate(); err != nil {
+				t.Fatalf("valid proxy URL was rejected: %v", err)
+			}
+		})
+	}
+}
+
+func TestValidateRejectsInvalidDatabaseUpdateProxy(t *testing.T) {
+	for _, proxy := range []string{"ftp://proxy.example:21", "http:///missing-host", "http://proxy.example/path", "http://proxy.example?token=value"} {
+		t.Run(proxy, func(t *testing.T) {
+			cfg := Config{Database: DatabaseConfig{DSN: "db", UpdateInterval: "6h", UpdateProxy: proxy}}
+			if err := cfg.Validate(); err == nil {
+				t.Fatal("invalid proxy URL was accepted")
+			}
+		})
+	}
+}
